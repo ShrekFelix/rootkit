@@ -3,7 +3,12 @@ ifeq ($(KERNELRELEASE),)
 KERNELDIR ?= /lib/modules/$(shell uname -r)/build 
 PWD := $(shell pwd)  
 
-.PHONY: build clean  
+all: build process
+
+.PHONY: build process clean  
+
+process: sneaky_process.c
+	gcc -ggdb3 -o $@ $<
 
 build:
 	$(MAKE) -C $(KERNELDIR) M=$(PWD) modules  
