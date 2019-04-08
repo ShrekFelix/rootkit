@@ -8,7 +8,7 @@ all: build process
 .PHONY: build process clean  
 
 process: sneaky_process.c
-	gcc -ggdb3 -o $@ $<
+	gcc -ggdb3 -o sneaky_process $<
 
 build:
 	$(MAKE) -C $(KERNELDIR) M=$(PWD) modules  
